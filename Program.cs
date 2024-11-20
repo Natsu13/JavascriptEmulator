@@ -12,7 +12,13 @@
              */
             var emulator = new JavascriptEmulator();
             //emulator.Execute("var test = Math.floor(Date.now() / 1000);");
-            emulator.Execute("var test = 5 * 20;");            
+            emulator.Execute("""
+                var test = 5.7 * 20;
+                var test2 = test * 4;
+            """);
+            var result = emulator.GetValue("test2").GetNumericValue();
+
+            var xox = 4;
         }
     }
 }

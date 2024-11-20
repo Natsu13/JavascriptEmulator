@@ -349,7 +349,7 @@ namespace JavascriptEmulator
                
                 if (type == TokenBaseType.Unknown) type = ch_type;
 
-                if (ch_type != type)
+                if (ch_type != type && !(type == TokenBaseType.Text && ch_type == TokenBaseType.Number))
                 {
                     MaybeSkipWhiteSpace();
                     return new []{ new Token { BaseType = type, Value = buffer.ToString(), Location = saved_location } };

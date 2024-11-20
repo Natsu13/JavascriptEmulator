@@ -8,11 +8,16 @@ namespace JavascriptEmulator
 {
     public class JavascriptBaseBytecodeBuilder
     {
-        private List<int> bytecodes = new List<int>();
+        private List<long> bytecodes = new List<long>();
 
-        public JavascriptBaseBytecodeBuilder(JavascriptAst ast) 
+        public JavascriptBaseBytecodeBuilder() 
         {
-            Parse(ast);
+
+        }
+
+        public long[] GetBytecodes()
+        {
+            return bytecodes.ToArray();
         }
 
         private int CurrentIndex()
@@ -20,34 +25,123 @@ namespace JavascriptEmulator
             return bytecodes.Count;
         }
 
-        public void Parse(JavascriptAst ast)
+        public void Build(JavascriptAst ast)
         {
             switch(ast.NodeType)
             {
                 case JavascriptAstType.Block:
-                    ParseBlock((JavascriptAstBlock)ast);
+                    BuildBlock((JavascriptAstBlock)ast);
                     break;
                 case JavascriptAstType.Var:
-                    ParseVariable((JavascriptAstVar)ast);
+                    BuildVariable((JavascriptAstVar)ast);
+                    break;
+                case JavascriptAstType.BinOp:
+                    BuildBinOp((JavascriptAstBinaryOperation)ast);
+                    break;
+                case JavascriptAstType.Ident:
+                    BuildIdent((JavascriptAstIdent)ast);
+                    break;
+                case JavascriptAstType.Number:
+                    BuildNumber((JavascriptAstNumber)ast);
                     break;
             }
         }
 
-        public void ParseBlock(JavascriptAstBlock ast)
+        public void BuildIdent(JavascriptAstIdent ast)
         {
-            foreach (var element in ast.Elements)
+            if((ast.Flag & JavascriptAstIdentFlag.StoredInGlobalContext) != 0)
+                bytecode(JavascriptByteCodes.LdaGlobal);
+            else
+                bytecode(JavascriptByteCodes.LdaContextSlot);
+
+            bytecode(ast.Index);
+        }
+
+        public void BuildNumber(JavascriptAstNumber ast)
+        {
+            if(ast.Type == JavascriptAstNumberType.Integer)
             {
-                Parse(element);
+                bytecode(JavascriptByteCodes.LdaSmi);
+                bytecode(ast.Value);
+            }
+            else
+            {
+                bytecode(JavascriptByteCodes.LdaConstant);
+                bytecode(ast.Index);
+                //DoubleToLong((double)ast.ValueFloat)
             }
         }
 
-        public void ParseVariable(JavascriptAstVar ast)
+        private long DoubleToLong(double value)
         {
+            return BitConverter.DoubleToInt64Bits(value);
+        }
 
+        public void BuildBinOp(JavascriptAstBinaryOperation ast)
+        {
+            Build(ast.Left);
+            Build(ast.Right);
+
+            switch (ast.Operator)
+            {
+                case JavascriptAstBinaryOperationType.Plus:
+                    bytecode(JavascriptByteCodes.Add);
+                    break;
+                case JavascriptAstBinaryOperationType.Minus:
+                    bytecode(JavascriptByteCodes.Sub);
+                    break;
+                case JavascriptAstBinaryOperationType.Mul:
+                    bytecode(JavascriptByteCodes.Mul);
+                    break;
+                case JavascriptAstBinaryOperationType.Divide:
+                    bytecode(JavascriptByteCodes.Div);
+                    break;
+            }
+        }
+
+        public void BuildBlock(JavascriptAstBlock ast)
+        {
+            if(!ast.Context.IsGlobal) 
+            {
+                bytecode(JavascriptByteCodes.PushContext);
+            }
+
+            foreach (var element in ast.Elements)
+            {
+                Build(element);
+            }
+
+            if (!ast.Context.IsGlobal)
+            {
+                bytecode(JavascriptByteCodes.PopContext);
+            }
+        }
+
+        public void BuildVariable(JavascriptAstVar ast)
+        {            
+            Build(ast.Value);
+            if (ast.Context.IsGlobal)
+            {
+                bytecode(JavascriptByteCodes.StaGlobal);
+            }
+            else
+            {
+                bytecode(JavascriptByteCodes.StaCurrentContextSlot);
+            }
+            bytecode(ast.Index);
+        }
+
+        private void bytecode(long bytecode)
+        {
+            bytecodes.Add(bytecode);
+        }
+
+        private void bytecode(JavascriptByteCodes bytecode)
+        {
+            bytecodes.Add((int)bytecode);
         }
     }
 
-    [Flags]
     public enum JavascriptByteCodes
     {
         None = 0,

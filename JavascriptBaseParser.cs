@@ -74,6 +74,27 @@ namespace JavascriptEmulator
 
                 return astNumber;
             }
+            else if (element.Type == TokenType.ident)
+            {               
+                var identName = Eat(TokenType.ident)!.Value;
+
+                var next = Peek();
+                if (next.Type == TokenType.asign)
+                {
+                    var astVar = AstCreate<JavascriptAstVar>();
+                    astVar.Name = identName;
+
+                    Eat(TokenType.asign);
+
+                    astVar.Value = ParseExpression();
+
+                    return astVar;
+                }
+
+                var ident = AstCreate<JavascriptAstIdent>();
+                ident.Name = identName;
+                return ident;
+            }
 
             throw new JavascriptAstException($"Unexpected token type in basic parse! type = {element.Type}");
         }
@@ -176,12 +197,60 @@ namespace JavascriptEmulator
     public class JavascriptAstException: Exception
     {
         public JavascriptAstException(string message): base(message) { }
-    }    
+    }
+
+    public class JavascriptContext
+    {
+        public bool IsGlobal { get; set; }
+        public int CurrentIndex { get; set; } = 0;
+        public JavascriptAst? Owner { get; set; }
+        public JavascriptContext? ParentContext { get; set; }
+        public List<JavascriptAst> Constants { get; set; } = new List<JavascriptAst>();
+        public Dictionary<int, JavascriptAst> Variables { get; set; } = new Dictionary<int, JavascriptAst>();
+        public Dictionary<string, int> VariableIndexes { get; set; } = new Dictionary<string, int>();
+
+        public int Index()
+        {
+            return CurrentIndex++;
+        }
+
+        public void StoreVariable(JavascriptAstVar ast)
+        {
+            ast.Context = this;
+
+            if (VariableIndexes.ContainsKey(ast.Name))
+            {
+                ast.Index = VariableIndexes[ast.Name];
+            }
+            else
+            {
+                ast.Index = Index();                
+                Variables.Add(ast.Index, ast);
+                VariableIndexes.Add(ast.Name, ast.Index);
+            }
+        }
+
+        public int StoreConstant(JavascriptAstNumber ast)
+        {
+            if(!IsGlobal)
+            {
+                return ParentContext.StoreConstant(ast);
+            }
+            
+            var index = Constants.Count;
+            Constants.Add(ast);
+            ast.Flags |= JavascriptAstNumberFlags.StoredInConstantTable;
+            ast.Index = index;
+            return index;
+        }
+    }
 
     public abstract class JavascriptAst
     {
         public abstract JavascriptAstType NodeType { get; }
         public ContentLocation Location { get; set; }
+        public JavascriptContext Context { get; set; }
+
     }
 
     public enum JavascriptAstType
@@ -190,7 +259,8 @@ namespace JavascriptEmulator
         Block = 1,
         Var = 2,
         BinOp = 3,
-        Number = 4
+        Number = 4,
+        Ident = 5
     }
 
     public class JavascriptAstBlock: JavascriptAst
@@ -205,6 +275,7 @@ namespace JavascriptEmulator
         public override JavascriptAstType NodeType => JavascriptAstType.Var;
         public string Name { get; set; }
         public JavascriptAst? Value { get; set; }
+        public int Index { get; set; }
     }
 
     public class JavascriptAstBinaryOperation : JavascriptAst
@@ -225,17 +296,43 @@ namespace JavascriptEmulator
         Divide      ///
     }
 
+    public class JavascriptAstIdent: JavascriptAst
+    {
+        public override JavascriptAstType NodeType => JavascriptAstType.Ident;
+        public string Name { get; set; }
+        public JavascriptAstIdentFlag Flag { get; set; }
+        public int Index { get; set; }
+    }
+
+    [Flags]
+    public enum JavascriptAstIdentFlag
+    {
+        None = 0,
+        StoredInGlobalContext,
+        StoredInLocalContext,
+        StoredInIndexedContext
+    }
+
     public class JavascriptAstNumber: JavascriptAst
     {
         public override JavascriptAstType NodeType => JavascriptAstType.Number;
         public int Value { get; set; }
         public float ValueFloat { get; set; }
         public JavascriptAstNumberType Type { get; set; }
+        public JavascriptAstNumberFlags Flags { get; set; }
+        public int Index { get; set; }
     }
 
     public enum JavascriptAstNumberType
     {
         Integer = 1,
         Float = 2,
+    }
+
+    [Flags]
+    public enum JavascriptAstNumberFlags
+    {
+        None = 0,
+        StoredInConstantTable
     }
 }
